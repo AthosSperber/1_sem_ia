@@ -1,3 +1,6 @@
+# Exemplo de aprendizado supervisionado de uma rede neural com 1 neurônio (Perceptron)
+# A rede aprende a função lógica NOT (negação)
+
 import math
 
 input = 1               ## entrada
