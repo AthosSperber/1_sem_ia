@@ -1,8 +1,9 @@
+## Perceptron Simples para Portas Lógicas AND e OR
+
 import math
 
-# ==========================
 # Função de ativação
-# ==========================
+
 def activation(sum_):
     """Função degrau: retorna 1 se soma >= 0, senão 0"""
     if sum_ >= 0:
@@ -10,9 +11,9 @@ def activation(sum_):
     else:
         return 0
 
-# ==========================
+
 # Função de treino do perceptron
-# ==========================
+
 def train_perceptron(training_data, learning_rate=0.1, epochs=20):
     """
     Treina um perceptron simples em cima de uma tabela verdade.
@@ -64,9 +65,9 @@ def train_perceptron(training_data, learning_rate=0.1, epochs=20):
     print(f"\nPesos finais: {weights}, Bias: {bias_weight}\n")
     return weights, bias_weight
 
-# ==========================
+
 # Dados de treino
-# ==========================
+
 AND = [
     ([0, 0], 0),
     ([0, 1], 0),
@@ -81,9 +82,9 @@ OR = [
     ([1, 1], 1)
 ]
 
-# ==========================
+
 # Execução
-# ==========================
+
 print("### Treinando AND ###")
 train_perceptron(AND)
 
