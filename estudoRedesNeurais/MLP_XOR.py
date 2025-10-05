@@ -1,0 +1,1 @@
+# porta logica XOR usando MLP
