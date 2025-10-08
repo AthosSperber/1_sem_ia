@@ -2,14 +2,16 @@ import os
 import cv2
 import numpy as np
 from PIL import Image
+from tensorflow import keras
+from keras.models import load_model
 
 from dataset import load_images_from_folder, generate_patches
 from cnn_model import build_cnn
 
-def desenha_contorno_unico(img, patch_size, positions, preds, threshold= 0.7):
+
+def desenha_contorno_unico(img, patch_size, positions, preds, threshold=0.3):
     """
-    Desenha um único retângulo ao redor da região que contém flores
-    (com base nas predições e limiar definido).
+    Desenha um único retângulo ao redor da região que contém flores.
     """
     flower_indices = [idx for idx, p in enumerate(preds) if p >= threshold]
     if not flower_indices:
@@ -24,10 +26,30 @@ def desenha_contorno_unico(img, patch_size, positions, preds, threshold= 0.7):
         img,
         (min_j, min_i),
         (max_j + patch_size[1], max_i + patch_size[0]),
-        (255, 0, 255),  # cor retangulo
+        (255, 0, 255),
         3
     )
     return img
+
+
+def menu(model_path):
+    """
+    Menu simples para escolher a ação desejada.
+    """
+    if os.path.exists(model_path):
+        print("\n📁 Modelo salvo encontrado.")
+        print("[1] Treinar e SALVAR por cima do modelo atual")
+        print("[2] Treinar mas NÃO salvar (modo temporário)")
+        print("[3] Usar o modelo salvo (sem treinar)")
+        opcao = input("\nEscolha uma opção (1/2/3): ").strip()
+        return opcao
+    else:
+        print("\n🚀 Nenhum modelo salvo encontrado.")
+        print("[1] Treinar e SALVAR novo modelo")
+        print("[2] Treinar mas NÃO salvar (modo temporário)")
+        opcao = input("\nEscolha uma opção (1/2): ").strip()
+        return opcao
+
 
 def main():
     base_path = os.path.dirname(os.path.abspath(__file__))
@@ -35,43 +57,86 @@ def main():
     non_flowers_path = os.path.join(base_path, "images", "non_flowers")
     test_folder = os.path.join(base_path, "images", "test")
     results_folder = os.path.join(base_path, "results")
+    model_folder = os.path.join(base_path, "model")
+    model_path = os.path.join(model_folder, "cnn_model.h5")
     patch_size = (32, 32)
 
-    # Criar pasta results se não existir
     os.makedirs(results_folder, exist_ok=True)
+    os.makedirs(model_folder, exist_ok=True)
 
-    # Carregar imagens de treino
-    flowers = load_images_from_folder(flowers_path, label=1)
-    non_flowers = load_images_from_folder(non_flowers_path, label=0)
-    all_images = flowers + non_flowers
-    print(f"Total de imagens carregadas: {len(all_images)}")
+    # Menu inicial
+    opcao = menu(model_path)
 
-    if len(all_images) == 0:
-        print("[ERRO] Nenhuma imagem encontrada para treino.")
+    cnn = None
+
+    # === Treinar e salvar ===
+    if opcao == "1":
+        print("\n🧠 Treinando modelo (será salvo após o treino)...")
+        flowers = load_images_from_folder(flowers_path, label=1)
+        non_flowers = load_images_from_folder(non_flowers_path, label=0)
+        all_images = flowers + non_flowers
+
+        if not all_images:
+            print("[ERRO] Nenhuma imagem encontrada para treino.")
+            return
+
+        X, y = generate_patches(all_images, patch_size)
+        if X.shape[0] == 0:
+            print("[ERRO] Nenhum patch foi gerado.")
+            return
+
+        X = X.astype('float32') / 255.0
+        X = X.reshape(-1, patch_size[0], patch_size[1], 3)
+
+        cnn = build_cnn((patch_size[0], patch_size[1], 3))
+        cnn.fit(X, y, epochs=500, batch_size=64, verbose=1)
+
+        cnn.save(model_path)
+        print(f"\n✅ Modelo salvo em: {model_path}")
+
+    # === Treinar sem salvar ===
+    elif opcao == "2":
+        print("\n🧠 Treinando modelo (modo temporário)...")
+        flowers = load_images_from_folder(flowers_path, label=1)
+        non_flowers = load_images_from_folder(non_flowers_path, label=0)
+        all_images = flowers + non_flowers
+
+        if not all_images:
+            print("[ERRO] Nenhuma imagem encontrada para treino.")
+            return
+
+        X, y = generate_patches(all_images, patch_size)
+        if X.shape[0] == 0:
+            print("[ERRO] Nenhum patch foi gerado.")
+            return
+
+        X = X.astype('float32') / 255.0
+        X = X.reshape(-1, patch_size[0], patch_size[1], 3)
+
+        cnn = build_cnn((patch_size[0], patch_size[1], 3))
+        cnn.fit(X, y, epochs=20, batch_size=64, verbose=1)
+        print("\n⚠️ Treinamento concluído, mas modelo não será salvo.")
+
+    # === Usar modelo salvo ===
+    elif opcao == "3" and os.path.exists(model_path):
+        print("\n📦 Carregando modelo salvo...")
+        cnn = load_model(model_path)
+        print("✅ Modelo carregado com sucesso.")
+
+    else:
+        print("[ERRO] Opção inválida. Encerrando.")
         return
 
-    # Gerar patches
-    X, y = generate_patches(all_images, patch_size=patch_size)
-    print(f"Patches gerados: {X.shape[0]}")
-
-    if X.shape[0] == 0:
-        print("[ERRO] Nenhum patch foi gerado.")
+    # === Testar nas imagens ===
+    if cnn is None:
+        print("[ERRO] Nenhum modelo disponível para testar.")
         return
 
-    # Normalização
-    X = X.astype('float32') / 255.0
-
-    # Ajustar shape para CNN
-    X = X.reshape(-1, patch_size[0], patch_size[1], 3)
-
-    # Criar e treinar CNN
-    cnn = build_cnn((patch_size[0], patch_size[1], 3))
-    cnn.fit(X, y, epochs=200, batch_size=64 , verbose=1)
-
-    # Testar nas imagens da pasta test
     if not os.path.exists(test_folder):
         print("[ERRO] Pasta de teste não encontrada.")
         return
+
+    print("\n🔍 Iniciando predições nas imagens de teste...\n")
 
     for test_img_name in os.listdir(test_folder):
         if test_img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
@@ -95,16 +160,16 @@ def main():
             patches = np.array(patches).astype('float32') / 255.0
             preds = cnn.predict(patches, verbose=0).flatten()
 
-            img = desenha_contorno_unico(img, patch_size, positions, preds, threshold= 0.7)
+            img = desenha_contorno_unico(img, patch_size, positions, preds, threshold=0.3)
             img = img.astype(np.uint8)
             img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-            # Salvar resultado
             save_path = os.path.join(results_folder, f"resultado_{test_img_name}")
             cv2.imwrite(save_path, img_bgr)
             print(f"[OK] Resultado salvo em {save_path}")
 
-    print("✅ Processamento finalizado. Resultados estão na pasta 'results/'.")
+    print("\n✅ Processamento finalizado. Resultados estão na pasta 'results/'.")
+
 
 if __name__ == "__main__":
     main()
